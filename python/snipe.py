@@ -5,7 +5,18 @@ from timeit import default_timer
 import time
 import requests
 from datetime import datetime, timezone
+import mysql.connector
+import time
 
+mydb = mysql.connector.connect(
+  host="localhost",
+  user="root",
+  database="snipes"
+)
+
+mycursor = mydb.cursor()
+mycursor2 = mydb.cursor()
+mycursor3 = mydb.cursor()
 c = requests.get("https://api.hypixel.net/skyblock/auctions?page=0")
 resp = c.json()
 now = resp['lastUpdated']
@@ -18,7 +29,7 @@ prices = {}
 REFORGES = [" ✦", "⚚ ", " ✪", "✪", "Stiff ", "Lucky ", "Jerry's ", "Dirty ", "Fabled ", "Suspicious ", "Gilded ", "Warped ", "Withered ", "Bulky ", "Stellar ", "Heated ", "Ambered ", "Fruitful ", "Magnetic ", "Fleet ", "Mithraic ", "Auspicious ", "Refined ", "Headstrong ", "Precise ", "Spiritual ", "Moil ", "Blessed ", "Toil ", "Bountiful ", "Candied ", "Submerged ", "Reinforced ", "Cubic ", "Warped ", "Undead ", "Ridiculous ", "Necrotic ", "Spiked ", "Jaded ", "Loving ", "Perfect ", "Renowned ", "Giant ", "Empowered ", "Ancient ", "Sweet ", "Silky ", "Bloody ", "Shaded ", "Gentle ", "Odd ", "Fast ", "Fair ", "Epic ", "Sharp ", "Heroic ", "Spicy ", "Legendary ", "Deadly ", "Fine ", "Grand ", "Hasty ", "Neat ", "Rapid ", "Unreal ", "Awkward ", "Rich ", "Clean ", "Fierce ", "Heavy ", "Light ", "Mythic ", "Pure ", "Smart ", "Titanic ", "Wise ", "Bizarre ", "Itchy ", "Ominous ", "Pleasant ", "Pretty ", "Shiny ", "Simple ", "Strange ", "Vivid ", "Godly ", "Demonic ", "Forceful ", "Hurtful ", "Keen ", "Strong ", "Superior ", "Unpleasant ", "Zealous "]
 
 # Constant for the discord webhook you want the messages sent to; you need to change this
-DISCORD_WEBHOOK = "CHANGEME"
+APIURL = "localhost/post.php"
 
 # Constant for the lowest priced item you want to be shown to you; feel free to change this
 LOWEST_PRICE = 5
@@ -80,55 +91,34 @@ async def get_data_asynchronous():
             ]
             for response in await asyncio.gather(*tasks):
                 pass
-def send(price, name, profit, uuid, test1, test2):
-    url = DISCORD_WEBHOOK
-    data = {
-    "embeds": [
-        {
-       "title": "Snipe Incoming!", #feel free to change this
-        "description": "Found a cool snipe from the BINs for ya!", #feel free to change this
-       "color": 3388452,
-       "timestamp": str(datetime.now(timezone.utc)),
-       "footer": {
-         "icon_url": "https://samzy.dev/files/img/7d97481b1fe66f4b51db90da7e794d9f.webp", #feel free to change this
-         "text": "Made by SamzyDev#1205", #feel free to change this
-          },
-          "fields": [
-            {
-              "name": "Item Name",
-              "value": "```" + str(name) + "```"
-            },
-            {
-              "name": "Auction",
-              "value": "```/viewauction " + str(uuid) + "```"
-            },
-            {
-             "name": "Price",
-             "value": "```{:,}```".format(price)
-           },
-           {
-             "name": "Potential Profit",
-             "value": "```{:,}```".format(int(profit))
-           },
-           {
-             "name": "Second Lowest BIN - Lowest BIN Price",
-             "value": "```" + str("{:,}").format(test1) + " - " + str("{:,}").format(test2) + "```"
-           }
-         ]
-      }
-    ]
-    }
-    result = requests.post(url, json=data)
-    if 200 <= result.status_code < 300:
-      print(f"Message Sent!")
-    else:
-       print(f"Not sent with {result.status_code}, response:\n{result.json()}") #most likey a rate limit
-       time.sleep(5) #wait 5 seconds to send it
-       result2 = requests.post(url, json=data)
-       if 200 <= result2.status_code < 300:
-        print(f"Message Sent!")
-       else:
-        print(f"Not sent with {result2.status_code}, response:\n{result2.json()}")
+def send(price, name, profit, uuid):
+    sql = "INSERT INTO list (price, name, profit, uuid, time) VALUES (%s, %s, %s, %s, %s)"
+    val = ("{:,}".format(price), str(name), "{:,}".format(int(profit)), str(uuid), str(datetime.fromtimestamp(time.time(), tz=None)))
+    mycursor.execute(sql, val)
+    mydb.commit()
+#    url = APIURL
+#    data = {
+#    "snipe": [
+#        {
+#       "name": str(name),
+#        "uuid": str(uuid),
+#       "price": "{:,}".format(price),
+#       "pp": "{:,}".format(int(profit)),
+#       "sl_minus_l": str("{:,}").format(test1) + " - " + str("{:,}").format(test2)
+#      }
+#    ]
+#    }
+#    result = requests.post(url, json=data)
+#    if 200 <= result.status_code < 300:
+#      print(f"Message Sent!")
+#    else:
+#       print(f"Not sent with {result.status_code}, response:\n{result.json()}") #most likey a rate limit
+#       time.sleep(5) #wait 5 seconds to send it
+#       result2 = requests.post(url, json=data)
+#       if 200 <= result2.status_code < 300:
+#        print(f"Message Sent!")
+#       else:
+#        print(f"Not sent with {result2.status_code}, response:\n{result2.json()}")
 
 def main():
     # Resets variables
@@ -144,12 +134,22 @@ def main():
     
     # Makes sure all the results are still up to date
     if len(results): results = [[entry, prices[entry[3]][1]] for entry in results if (entry[2] > LOWEST_PRICE and prices[entry[3]][1] != float('inf') and prices[entry[3]][0] == entry[2] and prices[entry[3]][0]/prices[entry[3]][1] < LOWEST_PERCENT_MARGIN)]
-    
+    sql_statement = "SELECT uuid FROM `list` ORDER BY time DESC"
+    mycursor2.execute(sql_statement)
+    output = mycursor2.fetchall()
+    count = 0
+    for x in output:
+        count+=1
+        if (count > 10):
+            sql_statement2 = "DELETE FROM `list` WHERE uuid = '{}'".format(str(x[0]))
+            mycursor3.execute(sql_statement2)
+            mydb.commit()
+            print("deleted {}".format(str(x[0])))
     if len(results): # if there's results to print
         done = default_timer() - START_TIME
         for result in results:
             if (int(result[1]) - int(result[0][2]) > LOWEST_PROFIT): #More than 1M Profit
-                send(result[0][2], result[0][1], int(result[1]) - int(result[0][2]), result[0][0], result[1], result[0][2])
+                send(result[0][2], result[0][1], int(result[1]) - int(result[0][2]), result[0][0])
                 print("\nLooking for auctions...")
 
 print("Looking for auctions...")
